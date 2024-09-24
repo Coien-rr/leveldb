@@ -38,8 +38,8 @@ namespace {
 // when they detect an element in the cache acquiring or losing its only
 // external reference.
 
-// An entry is a variable length heap-allocated structure.  Entries
-// are kept in a circular doubly linked list ordered by access time.
+// An entry is a variable length heap-allocated structure.
+// Entries are kept in a circular doubly linked list ordered by access time.
 struct LRUHandle {
   void* value;
   void (*deleter)(const Slice&, void* value);
@@ -48,9 +48,11 @@ struct LRUHandle {
   LRUHandle* prev;
   size_t charge;  // TODO(opt): Only allow uint32_t?
   size_t key_length;
-  bool in_cache;     // Whether entry is in the cache.
-  uint32_t refs;     // References, including cache reference, if present.
-  uint32_t hash;     // Hash of key(); used for fast sharding and comparisons
+  bool in_cache;  // Whether entry is in the cache.
+  uint32_t refs;  // References, including cache reference, if present.
+  uint32_t hash;  // Hash of key(); used for fast sharding and comparisons
+
+  // NOTE: Why not declare it as const char*
   char key_data[1];  // Beginning of key
 
   Slice key() const {
@@ -78,6 +80,8 @@ class HandleTable {
 
   LRUHandle* Insert(LRUHandle* h) {
     LRUHandle** ptr = FindPointer(h->key(), h->hash);
+    // NOTE: use h pointer to replace old pointer,
+    // and The old pointer is eventually returned
     LRUHandle* old = *ptr;
     h->next_hash = (old == nullptr ? nullptr : old->next_hash);
     *ptr = h;
@@ -113,6 +117,7 @@ class HandleTable {
   // matches key/hash.  If there is no such cache entry, return a
   // pointer to the trailing slot in the corresponding linked list.
   LRUHandle** FindPointer(const Slice& key, uint32_t hash) {
+    // NOTE: bitwise AND to find position
     LRUHandle** ptr = &list_[hash & (length_ - 1)];
     while (*ptr != nullptr && ((*ptr)->hash != hash || key != (*ptr)->key())) {
       ptr = &(*ptr)->next_hash;
@@ -120,6 +125,13 @@ class HandleTable {
     return ptr;
   }
 
+  // NOTE:
+  // Call Case 1: In constructor func of HandleTable
+  //  resize table length_ to 4, then new 4 LRUHandle* to list_ but set all
+  //  LRUHandle* to 0
+  // Call Case 2: In Insert()
+  //  resize table lenth_ to bigger than elems_, and always be powers of 2
+  //  then reassign existing eles to new lists
   void Resize() {
     uint32_t new_length = 4;
     while (new_length < elems_) {

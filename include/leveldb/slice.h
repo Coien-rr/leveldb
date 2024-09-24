@@ -24,6 +24,8 @@
 
 namespace leveldb {
 
+// NOTE: class Slice itself doesn't have any memory management, it's just a
+// wrapper for C-style strings and their lengths.
 class LEVELDB_EXPORT Slice {
  public:
   // Create an empty slice.
@@ -89,10 +91,17 @@ class LEVELDB_EXPORT Slice {
   }
 
  private:
+  // NOTE: this->data_ is of type const char*, where const modifies char,
+  // indicating that data_ is a mutable pointer to immutable data
   const char* data_;
   size_t size_;
 };
 
+// NOTE: For performance reasons, operator== does not call Slice::compare
+// directly. Because operator== has two steps, first verifying that slice is
+// equal in length and then verifying that the contents of slice are the same,
+// but this->compare() always performs two steps,leading to redundant
+// computation.
 inline bool operator==(const Slice& x, const Slice& y) {
   return ((x.size() == y.size()) &&
           (memcmp(x.data(), y.data(), x.size()) == 0));

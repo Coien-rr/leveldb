@@ -15,6 +15,7 @@
 #include <string>
 
 #include "leveldb/slice.h"
+
 #include "port/port.h"
 
 namespace leveldb {
@@ -78,6 +79,8 @@ inline void EncodeFixed64(char* dst, uint64_t value) {
 // Lower-level versions of Get... that read directly from a character buffer
 // without any bounds checking.
 
+// NOTE: Decodes the contents of 4 consecutive bytes into a 32bit uint value.
+// bytes order is Little-Endian
 inline uint32_t DecodeFixed32(const char* ptr) {
   const uint8_t* const buffer = reinterpret_cast<const uint8_t*>(ptr);
 
