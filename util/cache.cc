@@ -84,6 +84,7 @@ class HandleTable {
     // and The old pointer is eventually returned
     LRUHandle* old = *ptr;
     h->next_hash = (old == nullptr ? nullptr : old->next_hash);
+    // NOTE: Core fill operations
     *ptr = h;
     if (old == nullptr) {
       ++elems_;
@@ -120,6 +121,7 @@ class HandleTable {
     // NOTE: bitwise AND to find position
     LRUHandle** ptr = &list_[hash & (length_ - 1)];
     while (*ptr != nullptr && ((*ptr)->hash != hash || key != (*ptr)->key())) {
+      // NOTE: actually get the (LRUHandle**)pointer of (LRUHandle*)next_hash
       ptr = &(*ptr)->next_hash;
     }
     return ptr;
@@ -128,7 +130,7 @@ class HandleTable {
   // NOTE:
   // Call Case 1: In constructor func of HandleTable
   //  resize table length_ to 4, then new 4 LRUHandle* to list_ but set all
-  //  LRUHandle* to 0
+  //  LRUHandle* to 0, nullptr actualy
   // Call Case 2: In Insert()
   //  resize table lenth_ to bigger than elems_, and always be powers of 2
   //  then reassign existing eles to new lists
@@ -138,6 +140,7 @@ class HandleTable {
       new_length *= 2;
     }
     LRUHandle** new_list = new LRUHandle*[new_length];
+    // TODO: REFACTOR: Takes sizeof the pointer to the pointer
     memset(new_list, 0, sizeof(new_list[0]) * new_length);
     uint32_t count = 0;
     for (uint32_t i = 0; i < length_; i++) {
@@ -176,18 +179,30 @@ class LRUCache {
   void Release(Cache::Handle* handle);
   void Erase(const Slice& key, uint32_t hash);
   void Prune();
+
   size_t TotalCharge() const {
     MutexLock l(&mutex_);
     return usage_;
   }
 
  private:
+  // NOTE: remove (LRUHandle*) e from the lru_ list
   void LRU_Remove(LRUHandle* e);
+
+  // NOTE: append (LRUHandle*) e before (LRUHandle*) list into lru list
   void LRU_Append(LRUHandle* list, LRUHandle* e);
+
+  // NOTE: if e in_use_ already, refs++, else  move it into in_use_ from lru
   void Ref(LRUHandle* e);
+
+  // NOTE: refs-- first, then if refs == 0, free it; else if refs == 1, move it
+  // into lru_ from in_use_
   void Unref(LRUHandle* e);
+
+  // NOTE: removing e from cache, then Unref it
   bool FinishErase(LRUHandle* e) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  //  NOTE: init value is 0
   // Initialized before use.
   size_t capacity_;
 
@@ -241,6 +256,8 @@ void LRUCache::Unref(LRUHandle* e) {
   if (e->refs == 0) {  // Deallocate.
     assert(!e->in_cache);
     (*e->deleter)(e->key(), e->value);
+    // NOTE: why not using delete e
+    // TODO: REFACTOR
     free(e);
   } else if (e->in_cache && e->refs == 1) {
     // No longer in use; move to lru_ list.
@@ -250,6 +267,7 @@ void LRUCache::Unref(LRUHandle* e) {
 }
 
 void LRUCache::LRU_Remove(LRUHandle* e) {
+  // WARNING: Only the front and back elements are set, not e itself.
   e->next->prev = e->prev;
   e->prev->next = e->next;
 }
@@ -282,6 +300,7 @@ Cache::Handle* LRUCache::Insert(const Slice& key, uint32_t hash, void* value,
                                                 void* value)) {
   MutexLock l(&mutex_);
 
+  // NOTE: malloc new LRUHandle and fill it using parameters
   LRUHandle* e =
       reinterpret_cast<LRUHandle*>(malloc(sizeof(LRUHandle) - 1 + key.size()));
   e->value = value;
@@ -303,6 +322,7 @@ Cache::Handle* LRUCache::Insert(const Slice& key, uint32_t hash, void* value,
     // next is read by key() in an assert, so it must be initialized
     e->next = nullptr;
   }
+
   while (usage_ > capacity_ && lru_.next != &lru_) {
     LRUHandle* old = lru_.next;
     assert(old->refs == 1);
