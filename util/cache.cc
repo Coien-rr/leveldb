@@ -177,6 +177,7 @@ class LRUCache {
                         void (*deleter)(const Slice& key, void* value));
   Cache::Handle* Lookup(const Slice& key, uint32_t hash);
   void Release(Cache::Handle* handle);
+  // TODO: just erase it without checking it whether in in_use_?
   void Erase(const Slice& key, uint32_t hash);
   void Prune();
 
@@ -374,6 +375,8 @@ class ShardedLRUCache : public Cache {
   port::Mutex id_mutex_;
   uint64_t last_id_;
 
+  // NOTE: seed is fixed at 0, so the hash function for the same input gets a
+  // constant return value
   static inline uint32_t HashSlice(const Slice& s) {
     return Hash(s.data(), s.size(), 0);
   }
@@ -382,6 +385,7 @@ class ShardedLRUCache : public Cache {
 
  public:
   explicit ShardedLRUCache(size_t capacity) : last_id_(0) {
+    // NOTE: Ensure that capacity / kNumShards is rounded up
     const size_t per_shard = (capacity + (kNumShards - 1)) / kNumShards;
     for (int s = 0; s < kNumShards; s++) {
       shard_[s].SetCapacity(per_shard);
